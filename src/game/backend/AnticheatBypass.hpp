@@ -23,6 +23,7 @@ namespace YimMenu
 		bool m_StandaloneLocalSaves = false;
 		bool m_BattlEyeBroken = false;
 		bool m_BattlEyeNeutered = false;
+		int m_BESuspendedThreads = 0;
 
 	public:
 		static void NeuterBEImmediate()

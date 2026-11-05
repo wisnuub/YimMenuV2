@@ -888,12 +888,48 @@ namespace YimMenu
 		}
 	}
 
+	static void GetModuleRange(HMODULE module, uintptr_t& base, uintptr_t& end)
+	{
+		base = reinterpret_cast<uintptr_t>(module);
+		auto dosHeader = reinterpret_cast<IMAGE_DOS_HEADER*>(module);
+		auto ntHeader = reinterpret_cast<IMAGE_NT_HEADERS*>(base + dosHeader->e_lfanew);
+		end = base + ntHeader->OptionalHeader.SizeOfImage;
+	}
+
+	// Suspending a thread parked inside ntdll risks freezing it while it holds a
+	// loader or heap lock, which deadlocks the next allocation anywhere in the process.
+	static bool SuspendThreadSafely(HANDLE thread)
+	{
+		uintptr_t ntBase, ntEnd;
+		GetModuleRange(GetModuleHandleA("ntdll.dll"), ntBase, ntEnd);
+
+		for (int attempt = 0; attempt < 5; attempt++)
+		{
+			if (SuspendThread(thread) == static_cast<DWORD>(-1))
+				return false;
+
+			CONTEXT ctx{};
+			ctx.ContextFlags = CONTEXT_CONTROL;
+			if (!::GetThreadContext(thread, &ctx))
+			{
+				ResumeThread(thread);
+				return false;
+			}
+
+			if (ctx.Rip < ntBase || ctx.Rip >= ntEnd)
+				return true;
+
+			ResumeThread(thread);
+			Sleep(1);
+		}
+
+		return false;
+	}
+
 	static int NeuterBattlEyeThreads(HMODULE beModule)
 	{
-		auto dosHeader = reinterpret_cast<IMAGE_DOS_HEADER*>(beModule);
-		auto ntHeader = reinterpret_cast<IMAGE_NT_HEADERS*>(reinterpret_cast<uintptr_t>(beModule) + dosHeader->e_lfanew);
-		uintptr_t modBase = reinterpret_cast<uintptr_t>(beModule);
-		uintptr_t modEnd = modBase + ntHeader->OptionalHeader.SizeOfImage;
+		uintptr_t modBase, modEnd;
+		GetModuleRange(beModule, modBase, modEnd);
 
 		HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
 		if (snap == INVALID_HANDLE_VALUE)
@@ -917,7 +953,7 @@ namespace YimMenu
 				if (te.th32ThreadID == GetCurrentThreadId() || te.th32ThreadID == g_MainThreadId)
 					continue;
 
-				HANDLE thread = OpenThread(THREAD_QUERY_INFORMATION | THREAD_SUSPEND_RESUME, FALSE, te.th32ThreadID);
+				HANDLE thread = OpenThread(THREAD_QUERY_INFORMATION | THREAD_GET_CONTEXT | THREAD_SUSPEND_RESUME, FALSE, te.th32ThreadID);
 				if (!thread)
 					continue;
 
@@ -926,28 +962,14 @@ namespace YimMenu
 					NtQueryInformationThread(thread, 9, &startAddress, sizeof(startAddress), nullptr);
 
 				auto addr = reinterpret_cast<uintptr_t>(startAddress);
-				if (addr >= modBase && addr < modEnd)
-				{
-					SuspendThread(thread);
+				if (addr >= modBase && addr < modEnd && SuspendThreadSafely(thread))
 					suspended++;
-				}
 
 				CloseHandle(thread);
 			} while (Thread32Next(snap, &te));
 		}
 
 		CloseHandle(snap);
-
-		auto initAddr = reinterpret_cast<uint8_t*>(GetProcAddress(beModule, "Init"));
-		if (initAddr)
-		{
-			DWORD oldProtect;
-			if (VirtualProtect(initAddr, 1, PAGE_EXECUTE_READWRITE, &oldProtect))
-			{
-				*initAddr = 0xC3; // ret
-				VirtualProtect(initAddr, 1, oldProtect, &oldProtect);
-			}
-		}
 
 		return suspended;
 	}
@@ -958,8 +980,8 @@ namespace YimMenu
 		if (!beModule)
 			return;
 
-		NeuterBattlEyeThreads(beModule);
-		m_BattlEyeNeutered = true;
+		m_BESuspendedThreads = NeuterBattlEyeThreads(beModule);
+		m_BattlEyeNeutered = m_BESuspendedThreads > 0;
 		m_BattlEyeRunning = false;
 	}
 
@@ -973,27 +995,24 @@ namespace YimMenu
 		bool beModulePresent = beClientHandle != nullptr;
 		int restartReason = NETWORK::_NETWORK_GET_GAME_RESTART_REASON();
 
-		if (m_BattlEyeNeutered)
-		{
-			LOGF(INFO, "BattlEye was neutered at startup, -nobattleye not required");
-		}
-		else if (beModulePresent && restartReason != 0)
+		if (beModulePresent && restartReason != 0)
 		{
 			m_BattlEyeBroken = true;
-			m_BattlEyeRunning = false;
 			LOGF(WARNING, "BattlEye module present but in broken state (restart reason: {}), falling back to standalone mode", restartReason);
 		}
+
+		if (beModulePresent && !m_BattlEyeNeutered && !m_IsFSLLoaded)
+		{
+			m_BESuspendedThreads = NeuterBattlEyeThreads(beClientHandle);
+			m_BattlEyeNeutered = m_BESuspendedThreads > 0;
+		}
+
+		m_BattlEyeRunning = false;
+
+		if (m_BattlEyeNeutered)
+			LOGF(INFO, "BattlEye neutered: {} scanner threads suspended, -nobattleye not required", m_BESuspendedThreads);
 		else if (beModulePresent && !m_IsFSLLoaded)
-		{
-			int suspended = NeuterBattlEyeThreads(beClientHandle);
-			m_BattlEyeNeutered = true;
-			m_BattlEyeRunning = false;
-			LOGF(INFO, "BattlEye neutered (late): {} scanner threads suspended", suspended);
-		}
-		else
-		{
-			m_BattlEyeRunning = false;
-		}
+			LOGF(WARNING, "BattlEye is loaded but no scanner threads were matched, it may still be active. Relaunch with -nobattleye if you get kicked");
 
 		const char* mode = "Standalone";
 

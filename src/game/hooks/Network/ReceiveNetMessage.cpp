@@ -174,9 +174,9 @@ namespace YimMenu::Hooks
 		}
 		case rage::netMessage::Type::LostConnectionToHost:
 		{
-			if (AnticheatBypass::IsBattlEyeBroken())
+			if (AnticheatBypass::IsBattlEyeBroken() || AnticheatBypass::IsBattlEyeNeutered() || AnticheatBypass::IsUsingStandaloneLocalSaves())
 			{
-				LOGF(WARNING, "Suppressed LostConnectionToHost in broken-BE mode");
+				LOGF(WARNING, "Suppressed LostConnectionToHost");
 				return;
 			}
 			break;
