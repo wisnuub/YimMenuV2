@@ -5,6 +5,7 @@ Experimental menu for GTA 5: Enhanced, with standalone BattlEye/FSL bypass and s
 ## What's different in this fork
 
 - **No FSL/Lawnchair required**: works standalone without the external WINMM.dll proxy. Local saves are enabled automatically when FSL is absent
+- **No `-nobattleye` required**: when BattlEye is loaded normally (no launch flag), the menu suspends BE's scanner threads and patches its Init export, preventing detection while the game thinks BE is active. All BE server commands are handled with fake responses
 - **Broken BattlEye handling**: if BE is present but in a broken state (e.g. account migration issues, BE detecting FSL), the menu detects this and falls back to standalone mode instead of crashing
 - **Session Guard**: auto-enabled in standalone mode, prevents mid-gameplay disconnects by blocking scripted bail events, suppressing BE restart/ban flags, and disabling idle kicks
 - **Extended BE protocol**: handles all known BattlEye command opcodes (0, 1, 2, 4, 5, 7, 9 + fallback) with fake responses so the server never drops you for a missing heartbeat
@@ -17,10 +18,10 @@ Experimental menu for GTA 5: Enhanced, with standalone BattlEye/FSL bypass and s
 
 1. Download or build YimMenuV2.dll from this fork
 2. Download an injector, such as [Xenos](https://www.unknowncheats.me/forum/general-programming-and-reversing/124013-xenos-injector-v2-3-2-a.html)
-3. Launch GTA V (with or without BattlEye, with or without FSL)
+3. Launch GTA V normally (no `-nobattleye` needed, no Social Club toggle needed)
 4. Inject YimMenuV2.dll at the main menu
 
-FSL is **optional**. If installed, the menu will use it. If not, or if BE rejects it, standalone mode kicks in automatically.
+Neither FSL nor `-nobattleye` is required. The menu automatically neuters BattlEye's scanner threads at injection time, then handles all BE server communication with fake responses.
 
 ## How to open the menu
 
@@ -33,9 +34,9 @@ The menu auto-detects which mode to use at startup:
 | Mode | Condition | What happens |
 |------|-----------|--------------|
 | **FSL** | Lawnchair DLL loaded with valid exports | Uses FSL for local saves and BE bypass |
-| **Standalone** | No FSL detected | Standalone local saves, binary patches applied, fake BE responses |
+| **Neutered BattlEye** | BE loaded normally, no FSL | BE scanner threads suspended, Init patched to no-op, fake BE responses, standalone patches applied |
+| **Standalone** | No BE module, no FSL | Standalone local saves, binary patches applied, fake BE responses |
 | **Standalone (BE broken)** | BE module present but broken (restart reason != 0) | Same as standalone, plus aggressive Arxan filtering and kick blocking |
-| **Legit BattlEye** | BE running normally, no FSL | BE handles anticheat normally (not recommended without a real bypass) |
 
 Check the log for "Anticheat bypass mode: ..." to see which mode is active.
 

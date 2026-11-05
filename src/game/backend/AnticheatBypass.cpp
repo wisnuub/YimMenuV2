@@ -6,6 +6,7 @@
 #include "game/backend/NativeHooks.hpp"
 #include "game/gta/Natives.hpp"
 #include "types/anticheat/CAnticheatContext.hpp"
+#include <TlHelp32.h>
 
 using FnGetVersion = int (*)();
 using FnLocalSaves = bool (*)();
@@ -887,6 +888,70 @@ namespace YimMenu
 		}
 	}
 
+	static int NeuterBattlEyeThreads(HMODULE beModule)
+	{
+		auto dosHeader = reinterpret_cast<IMAGE_DOS_HEADER*>(beModule);
+		auto ntHeader = reinterpret_cast<IMAGE_NT_HEADERS*>(reinterpret_cast<uintptr_t>(beModule) + dosHeader->e_lfanew);
+		uintptr_t modBase = reinterpret_cast<uintptr_t>(beModule);
+		uintptr_t modEnd = modBase + ntHeader->OptionalHeader.SizeOfImage;
+
+		HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+		if (snap == INVALID_HANDLE_VALUE)
+			return 0;
+
+		using NtQIT = LONG(WINAPI*)(HANDLE, ULONG, PVOID, ULONG, PULONG);
+		auto NtQueryInformationThread = reinterpret_cast<NtQIT>(
+		    GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationThread"));
+
+		THREADENTRY32 te{};
+		te.dwSize = sizeof(te);
+		DWORD pid = GetCurrentProcessId();
+		int suspended = 0;
+
+		if (Thread32First(snap, &te))
+		{
+			do
+			{
+				if (te.th32OwnerProcessID != pid)
+					continue;
+				if (te.th32ThreadID == GetCurrentThreadId() || te.th32ThreadID == g_MainThreadId)
+					continue;
+
+				HANDLE thread = OpenThread(THREAD_QUERY_INFORMATION | THREAD_SUSPEND_RESUME, FALSE, te.th32ThreadID);
+				if (!thread)
+					continue;
+
+				PVOID startAddress = nullptr;
+				if (NtQueryInformationThread)
+					NtQueryInformationThread(thread, 9, &startAddress, sizeof(startAddress), nullptr);
+
+				auto addr = reinterpret_cast<uintptr_t>(startAddress);
+				if (addr >= modBase && addr < modEnd)
+				{
+					SuspendThread(thread);
+					suspended++;
+				}
+
+				CloseHandle(thread);
+			} while (Thread32Next(snap, &te));
+		}
+
+		CloseHandle(snap);
+
+		auto initAddr = reinterpret_cast<uint8_t*>(GetProcAddress(beModule, "Init"));
+		if (initAddr)
+		{
+			DWORD oldProtect;
+			if (VirtualProtect(initAddr, 1, PAGE_EXECUTE_READWRITE, &oldProtect))
+			{
+				*initAddr = 0xC3; // ret
+				VirtualProtect(initAddr, 1, oldProtect, &oldProtect);
+			}
+		}
+
+		return suspended;
+	}
+
 	void AnticheatBypass::RunScriptImpl()
 	{
 		NativeHooks::AddHook("shop_controller"_J, NativeIndex::NET_GAMESERVER_BEGIN_SERVICE, &TransactionHook);
@@ -903,17 +968,24 @@ namespace YimMenu
 			m_BattlEyeRunning = false;
 			LOGF(WARNING, "BattlEye module present but in broken state (restart reason: {}), falling back to standalone mode", restartReason);
 		}
+		else if (beModulePresent && !m_IsFSLLoaded)
+		{
+			int suspended = NeuterBattlEyeThreads(beClientHandle);
+			m_BattlEyeNeutered = true;
+			m_BattlEyeRunning = false;
+			LOGF(INFO, "BattlEye neutered: {} scanner threads suspended, -nobattleye not required", suspended);
+		}
 		else
 		{
-			m_BattlEyeRunning = (restartReason == 0 && beModulePresent) && !m_IsFSLLoaded;
+			m_BattlEyeRunning = false;
 		}
 
 		const char* mode = "Standalone";
 
 		if (m_BattlEyeBroken)
 			mode = "Standalone (BE broken)";
-		else if (m_BattlEyeRunning)
-			mode = "Legit BattlEye";
+		else if (m_BattlEyeNeutered)
+			mode = "Neutered BattlEye";
 		else if (m_IsFSLLoaded)
 			mode = "FSL";
 
@@ -954,9 +1026,6 @@ namespace YimMenu
 			m_StandaloneLocalSaves = true;
 			LOGF(INFO, "No FSL detected, standalone local saves enabled for solo/SP play");
 		}
-
-		if (m_BattlEyeRunning)
-			LOGF(WARNING, "If you are not running an actual BattlEye bypass, exit the game immediately and ensure that BE is properly disabled");
 
 		bool needsStandaloneBypass = (!m_FSLProvidesBEBypass && !m_BattlEyeRunning) || m_BattlEyeBroken;
 

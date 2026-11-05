@@ -21,6 +21,7 @@ namespace YimMenu
 		bool m_FSLProvidesBEBypass = false;
 		bool m_StandaloneLocalSaves = false;
 		bool m_BattlEyeBroken = false;
+		bool m_BattlEyeNeutered = false;
 
 	public:
 		static void RunOnStartup()
@@ -67,6 +68,11 @@ namespace YimMenu
 		static bool IsBattlEyeBroken()
 		{
 			return GetInstance().m_BattlEyeBroken;
+		}
+
+		static bool IsBattlEyeNeutered()
+		{
+			return GetInstance().m_BattlEyeNeutered;
 		}
 	};
 }
