@@ -101,9 +101,13 @@ namespace YimMenu::Submenus
 
 		chat->AddItem(std::make_shared<CommandItem>("clearchat"_J));
 
+		auto debug = std::make_shared<Group>("Debug");
+		debug->AddItem(std::make_shared<CommandItem>("dumpbeclient"_J));
+
 		game->AddItem(playerEsp);
 		game->AddItem(pedEsp);
 		game->AddItem(objectEsp);
+		game->AddItem(debug);
 
 		gui->AddItem(uiStyle);
 		gui->AddItem(overlay);
