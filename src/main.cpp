@@ -31,6 +31,8 @@ namespace YimMenu
 {
 	DWORD Main(void*)
 	{
+		AnticheatBypass::NeuterBEImmediate();
+
 		const auto documents = std::filesystem::path(std::getenv("appdata")) / "YimMenuV2";
 		FileMgr::Init(documents);
 

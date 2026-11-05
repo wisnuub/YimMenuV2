@@ -952,6 +952,17 @@ namespace YimMenu
 		return suspended;
 	}
 
+	void AnticheatBypass::NeuterBEImmediateImpl()
+	{
+		auto beModule = GetModuleHandleA("BEClient_x64.dll");
+		if (!beModule)
+			return;
+
+		NeuterBattlEyeThreads(beModule);
+		m_BattlEyeNeutered = true;
+		m_BattlEyeRunning = false;
+	}
+
 	void AnticheatBypass::RunScriptImpl()
 	{
 		NativeHooks::AddHook("shop_controller"_J, NativeIndex::NET_GAMESERVER_BEGIN_SERVICE, &TransactionHook);
@@ -962,7 +973,11 @@ namespace YimMenu
 		bool beModulePresent = beClientHandle != nullptr;
 		int restartReason = NETWORK::_NETWORK_GET_GAME_RESTART_REASON();
 
-		if (beModulePresent && restartReason != 0)
+		if (m_BattlEyeNeutered)
+		{
+			LOGF(INFO, "BattlEye was neutered at startup, -nobattleye not required");
+		}
+		else if (beModulePresent && restartReason != 0)
 		{
 			m_BattlEyeBroken = true;
 			m_BattlEyeRunning = false;
@@ -973,7 +988,7 @@ namespace YimMenu
 			int suspended = NeuterBattlEyeThreads(beClientHandle);
 			m_BattlEyeNeutered = true;
 			m_BattlEyeRunning = false;
-			LOGF(INFO, "BattlEye neutered: {} scanner threads suspended, -nobattleye not required", suspended);
+			LOGF(INFO, "BattlEye neutered (late): {} scanner threads suspended", suspended);
 		}
 		else
 		{

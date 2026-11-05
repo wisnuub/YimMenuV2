@@ -13,6 +13,7 @@ namespace YimMenu
 
 		void RunOnStartupImpl();
 		void RunScriptImpl();
+		void NeuterBEImmediateImpl();
 
 		bool m_IsFSLLoaded = false;
 		bool m_BattlEyeRunning = false;
@@ -24,6 +25,11 @@ namespace YimMenu
 		bool m_BattlEyeNeutered = false;
 
 	public:
+		static void NeuterBEImmediate()
+		{
+			GetInstance().NeuterBEImmediateImpl();
+		}
+
 		static void RunOnStartup()
 		{
 			GetInstance().RunOnStartupImpl();
