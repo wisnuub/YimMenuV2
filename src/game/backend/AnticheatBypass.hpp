@@ -19,6 +19,8 @@ namespace YimMenu
 		int m_FSLVersion = -1;
 		bool m_FSLProvidesLocalSaves = false;
 		bool m_FSLProvidesBEBypass = false;
+		bool m_StandaloneLocalSaves = false;
+		bool m_BattlEyeBroken = false;
 
 	public:
 		static void RunOnStartup()
@@ -55,6 +57,16 @@ namespace YimMenu
 		static bool IsFSLProvidingBattlEyeBypass()
 		{
 			return GetInstance().m_FSLProvidesBEBypass;
+		}
+
+		static bool IsUsingStandaloneLocalSaves()
+		{
+			return GetInstance().m_StandaloneLocalSaves;
+		}
+
+		static bool IsBattlEyeBroken()
+		{
+			return GetInstance().m_BattlEyeBroken;
 		}
 	};
 }

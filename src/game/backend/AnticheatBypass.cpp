@@ -890,16 +890,32 @@ namespace YimMenu
 		NativeHooks::AddHook("shop_controller"_J, NativeIndex::NET_GAMESERVER_BEGIN_SERVICE, &TransactionHook);
 
 		m_IsFSLLoaded = CheckForFSL();
-		m_BattlEyeRunning = (NETWORK::_NETWORK_GET_GAME_RESTART_REASON() == 0 && GetModuleHandleA("BEClient_x64.dll")) && !m_IsFSLLoaded;
 
-		const char* mode = "Vanilla";
+		auto beClientHandle = GetModuleHandleA("BEClient_x64.dll");
+		bool beModulePresent = beClientHandle != nullptr;
+		int restartReason = NETWORK::_NETWORK_GET_GAME_RESTART_REASON();
 
-		if (m_BattlEyeRunning)
+		if (beModulePresent && restartReason != 0)
+		{
+			m_BattlEyeBroken = true;
+			m_BattlEyeRunning = false;
+			LOGF(WARNING, "BattlEye module present but in broken state (restart reason: {}), falling back to standalone mode", restartReason);
+		}
+		else
+		{
+			m_BattlEyeRunning = (restartReason == 0 && beModulePresent) && !m_IsFSLLoaded;
+		}
+
+		const char* mode = "Standalone";
+
+		if (m_BattlEyeBroken)
+			mode = "Standalone (BE broken)";
+		else if (m_BattlEyeRunning)
 			mode = "Legit BattlEye";
 		else if (m_IsFSLLoaded)
 			mode = "FSL";
 
-		LOGF(VERBOSE, "Anticheat bypass mode: {}", mode);
+		LOGF(INFO, "Anticheat bypass mode: {}", mode);
 
 		if (m_IsFSLLoaded)
 		{
@@ -920,48 +936,48 @@ namespace YimMenu
 					m_FSLProvidesLocalSaves = LawnchairIsProvidingLocalSaves();
 					m_FSLProvidesBEBypass = LawnchairIsProvidingBattlEyeBypass();
 
-					LOGF(VERBOSE, "FSL Version: {}", m_FSLVersion);
-					LOGF(VERBOSE, "FSL Local Saves: {}", m_FSLProvidesLocalSaves ? "Enabled" : "Disabled");
-					LOGF(VERBOSE, "FSL BE Bypass: {}", m_FSLProvidesBEBypass ? "Enabled" : "Disabled");
+					LOGF(INFO, "FSL Version: {}", m_FSLVersion);
+					LOGF(INFO, "FSL Local Saves: {}", m_FSLProvidesLocalSaves ? "Enabled" : "Disabled");
+					LOGF(INFO, "FSL BE Bypass: {}", m_FSLProvidesBEBypass ? "Enabled" : "Disabled");
 				}
 				else
 				{
-					LOGF(WARNING, "FSL detected but required exports were missing.");
+					LOGF(WARNING, "FSL detected but required exports were missing, enabling standalone local saves");
+					m_StandaloneLocalSaves = true;
 				}
 			}
 		}
 		else
 		{
-#if !RESTORE_DESTROYED_FUNCTIONS
-			LOGF(FATAL, "YimMenu requires FSL to be loaded. Please get it from UnknownCheats.me");
-#endif
+			m_StandaloneLocalSaves = true;
+			LOGF(INFO, "No FSL detected, standalone local saves enabled for solo/SP play");
 		}
 
 		if (m_BattlEyeRunning)
 			LOGF(WARNING, "If you are not running an actual BattlEye bypass, exit the game immediately and ensure that BE is properly disabled");
 
-		if (!m_FSLProvidesBEBypass && !m_BattlEyeRunning)
-		{
-			// this is integrity checked now
-			//Pointers.BattlEyeStatusUpdatePatch->Apply();
+		bool needsStandaloneBypass = (!m_FSLProvidesBEBypass && !m_BattlEyeRunning) || m_BattlEyeBroken;
 
+		if (needsStandaloneBypass)
+		{
 #if RESTORE_DESTROYED_FUNCTIONS
 			if (std::strcmp(Pointers.GameVersion, PATCH_GAME_VERSION) == 0)
 			{
 				uintptr_t base = ModuleMgr.Get("GTA5_Enhanced.exe"_J)->Base();
 				PatchEncryptedFunctions(base);
 				PatchDestroyedFunctions(base);
+				LOGF(INFO, "Standalone patches applied for version {}", PATCH_GAME_VERSION);
 			}
 			else
 			{
-				LOGF(FATAL, "Standalone bypass is outdated, game may crash");
+				LOGF(WARNING, "Game version {} does not match patch version {}, standalone patches skipped", Pointers.GameVersion, PATCH_GAME_VERSION);
 			}
 #endif
 		}
 
 		while (true)
 		{
-			if (!m_FSLProvidesBEBypass && !m_BattlEyeRunning)
+			if (needsStandaloneBypass)
 			{
 				*Pointers.BERestartStatus = 0;
 				*Pointers.NeedsBERestart = false;

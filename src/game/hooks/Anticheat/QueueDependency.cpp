@@ -1,6 +1,7 @@
 #include "core/hooking/DetourHook.hpp"
 #include "game/hooks/Hooks.hpp"
 #include "game/pointers/Pointers.hpp"
+#include "game/backend/AnticheatBypass.hpp"
 #include "core/memory/ModuleMgr.hpp"
 #include "core/memory/PointerCalculator.hpp"
 #include "core/util/Joaat.hpp"
@@ -12,7 +13,7 @@ namespace YimMenu::Hooks
 	static bool IsAddressInGameMemory(void* addr)
 	{
 		auto as_int = reinterpret_cast<uintptr_t>(addr);
-		static auto module = ModuleMgr.Get("GTA5_Enhanced.exe"_J); // this should always succeed
+		static auto module = ModuleMgr.Get("GTA5_Enhanced.exe"_J);
 
 		return as_int >= module->Base() && as_int <= module->End();
 	}
@@ -32,7 +33,7 @@ namespace YimMenu::Hooks
 		if (!IsAddressInGameMemory(jmp_addr))
 			return false;
 
-		return true; // likely, yes
+		return true;
 	}
 
 	void Anticheat::QueueDependency(__int64 a1)
@@ -50,12 +51,16 @@ namespace YimMenu::Hooks
 			return;
 		}
 
+		if (Pointers.Nullsub && (f1 == Pointers.Nullsub || f2 == Pointers.Nullsub || f3 == Pointers.Nullsub))
+			return;
+
 		int arx_score = (int)IsPotentialArxanCallback(f1) + (int)IsPotentialArxanCallback(f2) + (int)IsPotentialArxanCallback(f3);
 
 		if (arx_score >= 2)
-		{
 			return;
-		}
+
+		if (AnticheatBypass::IsBattlEyeBroken() && arx_score >= 1)
+			return;
 
 		BaseHook::Get<Anticheat::QueueDependency, DetourHook<decltype(&Anticheat::QueueDependency)>>()->Original()(a1);
 	}
