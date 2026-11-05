@@ -87,6 +87,7 @@ namespace YimMenu::Submenus
 
 		miscGroup->AddItem(std::make_shared<BoolCommandItem>("forcethunder"_J));
 
+		enhancements->AddItem(std::make_shared<BoolCommandItem>("sessionguard"_J));
 		enhancements->AddItem(std::make_shared<BoolCommandItem>("notifyonplayerjoin"_J));
 		enhancements->AddItem(std::make_shared<BoolCommandItem>("fastjoin"_J));
 		enhancements->AddItem(std::make_shared<BoolCommandItem>("disabledeathbarriers"_J));

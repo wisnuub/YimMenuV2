@@ -11,6 +11,8 @@ using FnGetVersion = int (*)();
 using FnLocalSaves = bool (*)();
 using FnBattlEyeBypass = bool (*)();
 
+namespace YimMenu::Features { void InitSessionGuard(); }
+
 #define RESTORE_DESTROYED_FUNCTIONS true
 #define PATCH_GAME_VERSION "1158.16"
 
@@ -974,6 +976,8 @@ namespace YimMenu
 			}
 #endif
 		}
+
+		Features::InitSessionGuard();
 
 		while (true)
 		{

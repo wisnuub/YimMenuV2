@@ -163,6 +163,24 @@ namespace YimMenu::Hooks
 				return;
 			break;
 		}
+		case rage::netMessage::Type::RequestKickFromHost:
+		{
+			if (AnticheatBypass::IsBattlEyeBroken() || AnticheatBypass::IsUsingStandaloneLocalSaves())
+			{
+				LOGF(WARNING, "Blocked RequestKickFromHost in standalone mode");
+				return;
+			}
+			break;
+		}
+		case rage::netMessage::Type::LostConnectionToHost:
+		{
+			if (AnticheatBypass::IsBattlEyeBroken())
+			{
+				LOGF(WARNING, "Suppressed LostConnectionToHost in broken-BE mode");
+				return;
+			}
+			break;
+		}
 		case rage::netMessage::Type::BattlEyeCmd:
 		{
 			if ((!AnticheatBypass::IsFSLProvidingBattlEyeBypass() && !AnticheatBypass::IsBattlEyeRunning()) || AnticheatBypass::IsBattlEyeBroken())
