@@ -44,11 +44,14 @@ namespace
         return pid;
     }
 
+    using PNtSuspendProcess = LONG(WINAPI*)(HANDLE);
+    using PNtResumeProcess  = LONG(WINAPI*)(HANDLE);
+
     bool inject(DWORD pid, const wchar_t* dll_path)
     {
         HANDLE proc = OpenProcess(
             PROCESS_CREATE_THREAD | PROCESS_QUERY_LIMITED_INFORMATION |
-            PROCESS_VM_OPERATION | PROCESS_VM_WRITE,
+            PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_SUSPEND_RESUME,
             FALSE, pid);
         if (!proc)
         {
@@ -56,6 +59,12 @@ namespace
             return false;
         }
         wprintf(L"[+] OpenProcess OK for PID %lu\n", pid);
+
+        // NOTE: do NOT NtSuspendProcess here. It freezes threads that may hold
+        // the loader lock or heap lock, which our shepherd's DllMain then
+        // deadlocks on when MinHook calls VirtualAlloc/VirtualProtect. We rely
+        // on fast synchronous install in DllMain + inline hooking of
+        // NtCreateUserProcess to win the race against the host's next spawn.
 
         size_t bytes = (wcslen(dll_path) + 1) * sizeof(wchar_t);
         LPVOID remote = VirtualAllocEx(proc, nullptr, bytes,
@@ -90,7 +99,7 @@ namespace
         wprintf(L"[+] LoadLibrary returned HMODULE=0x%x\n", code);
         CloseHandle(th);
         CloseHandle(proc);
-        return code != 0;
+        return code != 0 && code != STILL_ACTIVE;
     }
 
     bool write_reg(const wchar_t* val, const wchar_t* data)
